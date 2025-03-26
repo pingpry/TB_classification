@@ -1,0 +1,194 @@
+query_available_dl_devices (['runtime','runtime'], ['gpu','cpu'], DLDeviceHandles)
+if (|DLDeviceHandles| == 0)
+    throw ('No supported device found to continue this example.')
+endif
+DLDevice := DLDeviceHandles[0]
+
+PreprocessParamFileName := 'C:/02TB_run/04_crop_1500x1500/model_for_afb_skin/model_afb_dkin/model_afb_skin02_224_ResNet50/02model_afb_skin_224_resnet50_Training-241026-210523_opt_dl_preprocess_params.hdict'
+RetrainedModelFileName := 'C:/02TB_run/04_crop_1500x1500/model_for_afb_skin/model_afb_dkin/model_afb_skin02_224_ResNet50/02model_afb_skin_224_resnet50_Training-241026-210523_opt.hdl'
+BatchSizeInference := 1
+
+read_dl_model (RetrainedModelFileName, DLModelHandle)
+set_dl_model_param (DLModelHandle, 'batch_size', BatchSizeInference)
+set_dl_model_param (DLModelHandle, 'device', DLDevice)
+
+get_dl_model_param (DLModelHandle, 'class_names', ClassNames)
+get_dl_model_param (DLModelHandle, 'class_ids', ClassIDs)
+
+read_dict (PreprocessParamFileName, [], [], DLPreprocessParam)
+create_dict (DLDataInfo)
+set_dict_tuple (DLDataInfo, 'class_names', ClassNames)
+set_dict_tuple (DLDataInfo, 'class_ids', ClassIDs)
+
+dev_close_window()
+read_image (Image, 'C:/02TB_run/04_crop_1500x1500/Image_001_002_from_61-28_img11_afb_skin.tif')
+get_image_size(Image, Width, Height)
+scale := 1
+dev_open_window (0, 0, Width*scale, Height*scale, 'black', WindowBig)
+dev_display(Image)
+dev_set_draw ('margin')
+dev_set_color('red')
+dev_set_line_width(2)
+
+dev_update_off ()
+
+
+
+Path := 'E:/Export_ต้นฉบับ/AFB_SKIN/03_63-1567___20240830__no_50x50_b/03_63-1567'
+list_files (Path, 'directories', Folder)
+
+* Find Folder Name
+for Index_1 := 0 to |Folder| - 1 by 1
+    stop()
+    tuple_split (Folder[Index_1], '\\', Substrings)
+    size := |Substrings|
+    tuple_strlen (Substrings[size-1], Length)
+    tuple_substr (Substrings[size-1], 0, Length-1, First_Lv_Folder)
+    
+    
+    Sub_path := Path + '/' + First_Lv_Folder
+    list_files (Sub_path, 'directories', Sub_Folder)
+    * Find Sub Folder Name
+    for Index_2 := 0 to |Sub_Folder| - 1 by 1
+        tuple_split (Sub_Folder[Index_2], '\\', Substrings)
+        size := |Substrings|
+        tuple_strlen (Substrings[size-1], Length)
+        tuple_substr (Substrings[size-1], 0, Length-1, Second_Lv_Folder)
+*         stop()
+        
+        data := dict{}
+        totaldata := dict{}
+        json_index := 0
+        Image_Path := Sub_path + '/' + Second_Lv_Folder
+        list_files (Image_Path, ['files','follow_links'], ImageFiles)
+        tuple_regexp_select (ImageFiles, ['\\.(tif|tiff|gif|bmp|jpg|jpeg|jp2|png|pcx|pgm|ppm|pbm|xwd|ima|hobj)$','ignore_case'], ImageFiles)
+        for Index := 0 to |ImageFiles| - 1 by 1
+            read_image (Image, ImageFiles[Index])
+            * Find Name
+            tuple_split (ImageFiles[Index], '\\', Substrings)
+            size := |Substrings|
+            tuple_strlen (Substrings[size-1], Length)
+            tuple_substr (Substrings[size-1], 0, Length-4-1, Image_Name)
+            Full_Name := First_Lv_Folder + '_' + Second_Lv_Folder + '_' + Image_Name
+            
+            tuple_strlen (ImageFiles[Index], Length2)
+            tuple_strlen (Second_Lv_Folder, Length3)
+            tuple_substr (ImageFiles[Index], 0, Length2-Length-Length3-1-1, Folder_Name)
+*             stop()
+            
+            decompose3 (Image, Red, Green, Blue)
+            trans_from_rgb (Red, Green, Blue, Hue, Saturation, Intensity, 'hsv')
+            trans_from_rgb (Red, Green, Blue, iL, ia, ib, 'cielab')
+            
+            * threshold
+            threshold (Hue, Regions, 155, 222)
+            threshold (Saturation, Regions1, 25, 91)
+            threshold (Intensity, Regions2, 214, 253)
+            gen_empty_region(rRed)
+            intersection (Regions, Regions1, rRed)
+            intersection (rRed, Regions2, rRed)
+            connection (rRed, rRed)
+            erosion_circle (rRed, RegionErosion, 2)
+            dilation_circle (RegionErosion, RegionDilation, 1.5)
+            select_shape (RegionDilation, rRed2, ['area','ra','rb'], 'and', [80,1,0], [2000,1000,50])
+            
+            area_center (rRed2, Area, Row, Column)
+            count_obj(rRed2, Number)
+            tuple_length (Row, Number)
+            tuple_gen_const (Number, 25, Redius)
+            gen_empty_obj(Rectangle)
+            if (Number>0)
+                gen_rectangle2 (Rectangle, Row, Column, 0*Redius, Redius, Redius)
+            endif
+            
+*             dev_clear_window()
+*             dev_set_color('red')
+*             dev_set_draw ('margin')
+*             dev_set_line_width(2)
+*             dev_display(Image)
+*             dev_display(rRed2)
+*             dev_display(Rectangle)
+*             stop()
+            * save image from rule base
+*             if (Number>0)
+*                 for x:= 1 to Number by 1
+*                     select_obj (Rectangle, rCrop, x)
+*                     reduce_domain (Image, rCrop, iCrop)
+*                     crop_domain (iCrop, iCrop)
+*                     write_image (iCrop, 'png', 0, 'C:/Users/GP/Desktop/TB/DLImage/'+Full_Name+'_' + x$'.6d')
+*                 endfor
+*             endif
+            
+            gen_empty_region(myRegion)
+            if (Number>0)
+                for x:= 1 to Number by 1
+                    select_obj (Rectangle, rCrop, x)
+                    reduce_domain (Image, rCrop, iCrop)
+                    crop_domain (iCrop, iCrop)
+                    
+                    gen_dl_samples_from_images (iCrop, DLSampleBatch)
+                    preprocess_dl_samples (DLSampleBatch, DLPreprocessParam)
+                    apply_dl_model (DLModelHandle, DLSampleBatch, [], DLResultBatch)
+                    get_dict_tuple (DLResultBatch, 'classification_class_ids', Tuple)
+                    get_dict_tuple (DLResultBatch, 'classification_confidences', Tuple_Score)
+                    test_score:=Tuple_Score[0]
+                    test:=Tuple[0]
+                    
+                    if (test==1 and test_score>0.75)
+*                         stop()
+                        concat_obj (myRegion, rCrop, myRegion)
+                    endif          
+                endfor
+            endif
+            
+            dev_clear_window()
+            dev_display(Image)
+            dev_display(myRegion)
+*             stop()
+            
+            
+            count_obj (myRegion, Number_1)
+            if (Number_1>1)
+*                 stop()
+                New_Folder := Folder_Name+'s'+Second_Lv_Folder
+                file_exists (New_Folder, FileExists)
+                if (FileExists==0)
+                    make_dir (New_Folder)
+                endif
+                Save_Name := New_Folder+'\\DL_'+Image_Name
+*                 stop()
+                dump_window (WindowBig, 'png', Save_Name)
+                
+                data := dict{}
+                data.Folder := New_Folder
+                data.Name   := Save_Name
+                data.Number := Number_1
+                totaldata.[json_index] := data
+                save_jname := New_Folder+'\\mydata_s'+Second_Lv_Folder
+                write_dict (totaldata, save_jname, 'file_type', 'json')
+                json_index := json_index+1
+            endif
+            
+            
+            * save image after confirm with DL 
+*             if (Number_1>0)
+*                 for x1:= 2 to Number_1 by 1
+*                     select_obj (myRegion, rCrop, x1)
+*                     reduce_domain (Image, rCrop, iCrop)
+*                     crop_domain (iCrop, iCrop)
+*                     write_image (iCrop, 'png', 0, 'C:/Users/GP/Desktop/work on paper/TB/ReTrainImage/RetrainImage/'+Full_Name+'_Re_' + x1$'.6d')
+*                 endfor
+*             endif
+            
+*             stop()
+            
+            
+        endfor
+        
+        
+    endfor
+    
+endfor
+
+
+
